@@ -24,7 +24,7 @@ class LinearModel(nn.Module):
     def forward(self, x):
         return self.fc(x)
 
-def train_and_measure(optimizer_name, n_steps=200, lr=0.01):
+def train_and_measure(optimizer_name, n_steps=2000, lr=0.01):  # ← 2000 not 2001
     model = LinearModel(D)
     params = list(model.parameters())
     m = torch.zeros(D)
@@ -59,7 +59,6 @@ def train_and_measure(optimizer_name, n_steps=200, lr=0.01):
             update_flat = -lr * grad_flat.detach() / ef_diag
 
         elif optimizer_name == 'NGD':
-            # Exact diagonal Fisher for MSE linear regression
             damping = 1e-3
             fisher_diag = (X ** 2).mean(dim=0)
             natural_grad = grad_flat.detach() / (fisher_diag + damping)
@@ -103,19 +102,15 @@ os.makedirs('../figures', exist_ok=True)
 np.save('../results/exp1_results.npy', results)
 print("\nResults saved.")
 
-# ── Find NGD convergence step ──────────────────────────────
 ngd_losses = results['NGD']['losses']
 ngd_converge_step = next(
     (i+1 for i, l in enumerate(ngd_losses) if l < 0.05), None
 )
 
-# ── Plot ───────────────────────────────────────────────────
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-
 colors = {'SGD': 'blue', 'Adam': 'red', 'EF': 'orange', 'NGD': 'green'}
-steps = range(1, 201)
+steps = range(1, 2001)  # ← exactly 2000 values to match n_steps=2000
 
-# γ panel — exclude NGD (reference method, not a subject of measurement)
 for opt, data in results.items():
     if opt == 'NGD':
         continue
@@ -125,7 +120,6 @@ for opt, data in results.items():
         s_plot, g_plot = zip(*valid)
         ax1.plot(s_plot, g_plot, label=opt, color=colors[opt], alpha=0.8)
 
-# Mark NGD convergence with vertical line
 if ngd_converge_step:
     ax1.axvline(x=ngd_converge_step, color='green', linestyle='--',
                 alpha=0.7, linewidth=1.5,
@@ -138,7 +132,6 @@ ax1.set_title('γ(Δθ): Step Alignment with Natural Gradient\n'
 ax1.legend()
 ax1.set_yscale('log')
 
-# Loss panel — show all four
 for opt, data in results.items():
     ax2.plot(steps, data['losses'], label=opt, color=colors[opt], alpha=0.8)
 

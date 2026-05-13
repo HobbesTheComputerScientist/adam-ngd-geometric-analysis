@@ -25,7 +25,7 @@ class LogisticModel(nn.Module):
     def forward(self, x):
         return self.fc(x)
 
-def train_and_measure(optimizer_name, n_steps=500, lr=0.01):
+def train_and_measure(optimizer_name, n_steps=2000, lr=0.01):  
     model = LogisticModel(D)
     params = list(model.parameters())
     m = torch.zeros(D)
@@ -61,12 +61,10 @@ def train_and_measure(optimizer_name, n_steps=500, lr=0.01):
             update_flat = -lr * grad_flat.detach() / ef_diag
 
         elif optimizer_name == 'NGD':
-            # For logistic regression: Fisher diagonal = p(1-p) * x_i^2
-            # where p = sigmoid(X @ theta)
             with torch.no_grad():
-                p = torch.sigmoid(model(X))           # [N, 1]
-                weights = (p * (1 - p)).squeeze()     # [N]
-                fisher_diag = (weights.unsqueeze(1) * X**2).mean(dim=0)  # [D]
+                p = torch.sigmoid(model(X))
+                weights = (p * (1 - p)).squeeze()
+                fisher_diag = (weights.unsqueeze(1) * X**2).mean(dim=0)
             damping = 1e-3
             natural_grad = grad_flat.detach() / (fisher_diag + damping)
             update_flat = -lr * natural_grad
@@ -115,7 +113,7 @@ ngd_converge_step = next(
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 colors = {'SGD': 'blue', 'Adam': 'red', 'EF': 'orange', 'NGD': 'green'}
-steps = range(1, 501)
+steps = range(1, 2001)  
 
 for opt, data in results.items():
     if opt == 'NGD':
