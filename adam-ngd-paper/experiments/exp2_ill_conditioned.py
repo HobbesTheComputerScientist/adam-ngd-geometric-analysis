@@ -23,6 +23,18 @@ D = 10
 scale = torch.ones(D)
 scale[:5] = 10.0   # high curvature directions
 scale[5:] = 0.1    # low curvature directions
+X_raw = torch.randn(N, D)
+X = X_raw * scale  # ← X is defined here
+
+true_weights = torch.randn(D, 1)
+y = X @ true_weights + 0.1 * torch.randn(N, 1)
+
+# ── Dataset diagnostics 
+eigenvalues = torch.linalg.eigvalsh(X.T @ X)
+print(f"Largest eigenvalue:  {eigenvalues[-1].item():.2f}")
+print(f"Smallest eigenvalue: {eigenvalues[0].item():.2f}")
+print(f"Condition number:    {(eigenvalues[-1]/eigenvalues[0]).item():.2f}")
+print("High condition number = ill-conditioned landscape\n")
 
 X_raw = torch.randn(N, D)
 X = X_raw * scale  # ill-conditioned input
