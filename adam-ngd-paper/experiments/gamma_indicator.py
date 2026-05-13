@@ -30,30 +30,32 @@ def compute_fisher_vector_product(loss, params, vector):
     return fvp_vec
 
 def compute_gamma(delta_theta, loss, params, grad_L):
-    """
-    Computes Wu et al. (2024) approximation quality indicator:
-    
-    gamma(delta_theta) = sqrt(delta_theta^T F delta_theta) 
-                         / |delta_theta^T grad_L|
-    
-    Smaller gamma = better approximation to true NGD update.
-    """
-    # Flatten delta_theta
     delta_flat = torch.cat([d.reshape(-1) for d in delta_theta])
     grad_flat = torch.cat([g.reshape(-1) for g in grad_L])
-    
-    # Compute F * delta_theta using double differentiation
-    F_delta = compute_fisher_vector_product(loss, params, 
-                                             delta_flat)
-    
-    # Numerator: sqrt(delta^T F delta)
-    numerator = torch.sqrt(torch.dot(delta_flat, F_delta) 
-                           + 1e-10)  # epsilon for stability
-    
-    # Denominator: |delta^T grad_L|
+
+    # γ is undefined when gradient vanishes (near convergence)
+    if torch.norm(grad_flat) < 1e-6:
+        return float('nan')
+
+    # Also guard against exploding delta (e.g. NGD with large steps)
+    if torch.norm(delta_flat) > 1e3:
+        return float('nan')
+
+    F_delta = compute_fisher_vector_product(loss, params, delta_flat)
+
+    fdelta_dot = torch.dot(delta_flat, F_delta)
+    fdelta_dot = torch.clamp(fdelta_dot, min=0.0)
+
+    numerator = torch.sqrt(fdelta_dot + 1e-10)
     denominator = torch.abs(torch.dot(delta_flat, grad_flat)) + 1e-10
-    
-    return (numerator / denominator).item()
+
+    gamma = (numerator / denominator).item()
+
+    # Final sanity guard — gamma > 1e3 is numerically meaningless
+    if gamma > 1e3 or np.isnan(gamma):
+        return float('nan')
+
+    return gamma
 
 def get_update_methods(model, loss, params, lr=0.01, 
                         beta1=0.9, beta2=0.999, eps=1e-8,
