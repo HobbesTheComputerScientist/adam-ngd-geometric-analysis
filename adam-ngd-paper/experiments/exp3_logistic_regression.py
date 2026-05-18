@@ -7,16 +7,20 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from gamma_indicator import compute_gamma
 
+
 torch.manual_seed(42)
 np.random.seed(42)
 
+
 N = 200
 D = 10
+
 
 X = torch.randn(N, D)
 true_weights = torch.randn(D, 1)
 logits = X @ true_weights
 y = (torch.sigmoid(logits) > 0.5).float()
+
 
 class LogisticModel(nn.Module):
     def __init__(self, in_dim):
@@ -25,7 +29,8 @@ class LogisticModel(nn.Module):
     def forward(self, x):
         return self.fc(x)
 
-def train_and_measure(optimizer_name, n_steps=2000, lr=0.01):  
+
+def train_and_measure(optimizer_name, n_steps=2000, lr=0.01):
     model = LogisticModel(D)
     params = list(model.parameters())
     m = torch.zeros(D)
@@ -60,6 +65,16 @@ def train_and_measure(optimizer_name, n_steps=2000, lr=0.01):
             ef_diag = grad_flat.detach()**2 + eps
             update_flat = -lr * grad_flat.detach() / ef_diag
 
+        elif optimizer_name == 'iEF':
+            # Improved Empirical Fisher (Wu et al., 2024)
+            with torch.no_grad():
+                preds = torch.sigmoid(model(X))        # (N, 1)
+                residuals = preds - y                  # (N, 1)
+                per_sample_grads = residuals * X       # (N, D)
+            norms_sq = (per_sample_grads ** 2).sum(dim=1, keepdim=True) + eps
+            ief_diag = (per_sample_grads ** 2 / norms_sq).mean(dim=0) + eps
+            update_flat = -lr * grad_flat.detach() / ief_diag
+
         elif optimizer_name == 'NGD':
             with torch.no_grad():
                 p = torch.sigmoid(model(X))
@@ -91,29 +106,40 @@ def train_and_measure(optimizer_name, n_steps=2000, lr=0.01):
 
     return gammas, losses
 
+
 print("=" * 50)
 print("Experiment 3: Logistic Regression")
 print("=" * 50)
 
+
 results = {}
-for opt in ['SGD', 'Adam', 'EF', 'NGD']:
-    lr = 0.1 if opt == 'NGD' else 0.01
+for opt in ['SGD', 'Adam', 'EF', 'iEF', 'NGD']:
+    if opt == 'NGD':
+        lr = 0.1
+    elif opt == 'iEF':
+        lr = 0.01
+    else:
+        lr = 0.01
     print(f"\nRunning {opt}...")
     gammas, losses = train_and_measure(opt, lr=lr)
     results[opt] = {'gammas': gammas, 'losses': losses}
 
+
 os.makedirs('../results', exist_ok=True)
 os.makedirs('../figures', exist_ok=True)
 np.save('../results/exp3_results.npy', results)
+
 
 ngd_losses = results['NGD']['losses']
 ngd_converge_step = next(
     (i+1 for i, l in enumerate(ngd_losses) if l < 0.3), None
 )
 
+
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-colors = {'SGD': 'blue', 'Adam': 'red', 'EF': 'orange', 'NGD': 'green'}
-steps = range(1, 2001)  
+colors = {'SGD': 'blue', 'Adam': 'red', 'EF': 'orange', 'iEF': 'purple', 'NGD': 'green'}
+steps = range(1, 2001)
+
 
 for opt, data in results.items():
     if opt == 'NGD':
@@ -124,10 +150,12 @@ for opt, data in results.items():
         s_plot, g_plot = zip(*valid)
         ax1.plot(s_plot, g_plot, label=opt, color=colors[opt], alpha=0.8)
 
+
 if ngd_converge_step:
     ax1.axvline(x=ngd_converge_step, color='green', linestyle='--',
                 alpha=0.7, linewidth=1.5,
                 label=f'NGD converged (step {ngd_converge_step})')
+
 
 ax1.set_xlabel('Training Step')
 ax1.set_ylabel('γ(Δθ)')
@@ -136,8 +164,10 @@ ax1.set_title('γ(Δθ): Step Alignment with Natural Gradient\n'
 ax1.legend()
 ax1.set_yscale('log')
 
+
 for opt, data in results.items():
     ax2.plot(steps, data['losses'], label=opt, color=colors[opt], alpha=0.8)
+
 
 ax2.set_xlabel('Training Step')
 ax2.set_ylabel('Binary Cross-Entropy Loss')
@@ -146,7 +176,8 @@ ax2.set_title('Training Loss\n'
 ax2.legend()
 ax2.set_yscale('log')
 
+
 plt.tight_layout()
-plt.savefig('../figures/exp3_logistic_regression.png', dpi=150, bbox_inches='tight')
+plt.savefig('../figures/exp3_logistic_regression.pdf', bbox_inches='tight')
 plt.show()
 print("Figure saved.")

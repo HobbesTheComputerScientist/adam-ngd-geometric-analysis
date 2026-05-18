@@ -7,13 +7,16 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from gamma_indicator import compute_gamma
 
+
 torch.manual_seed(42)
 np.random.seed(42)
+
 
 N = 200
 D_in = 20
 D_hidden = 32
 D_out = 1
+
 
 X = torch.randn(N, D_in)
 true_net = nn.Sequential(
@@ -24,6 +27,7 @@ true_net = nn.Sequential(
 with torch.no_grad():
     y = true_net(X) + 0.1 * torch.randn(N, D_out)
 
+
 # ── Model ─────────────────────────────────────────────────
 class SmallNet(nn.Module):
     def __init__(self):
@@ -32,6 +36,7 @@ class SmallNet(nn.Module):
         self.fc2 = nn.Linear(D_hidden, D_out, bias=False)
     def forward(self, x):
         return self.fc2(torch.relu(self.fc1(x)))
+
 
 def train_and_measure(optimizer_name, n_steps=500, lr=0.01):
     model = SmallNet()
@@ -70,10 +75,36 @@ def train_and_measure(optimizer_name, n_steps=500, lr=0.01):
             ef_diag = grad_flat.detach()**2 + eps
             update_flat = -lr * grad_flat.detach() / ef_diag
 
+        elif optimizer_name == 'iEF':
+            # Improved Empirical Fisher (Wu et al., 2024)
+            # For neural network: per-sample gradients computed explicitly
+            # since there is no closed-form residual * input shortcut
+            fisher_diag = torch.zeros(D_total)
+            for i in range(N):
+                out_i = model(X[i:i+1])
+                loss_i = loss_fn(out_i, y[i:i+1])
+                g_i = torch.autograd.grad(loss_i, params,
+                                          retain_graph=False)
+                g_i_flat = torch.cat([g.reshape(-1) for g in g_i])
+                g_i_flat = g_i_flat.detach()
+                fisher_diag += g_i_flat ** 2
+            fisher_diag /= N
+            # iEF normalisation: divide each per-sample sq-grad by its norm
+            # Re-compute to apply normalisation properly
+            G = []
+            for i in range(N):
+                out_i = model(X[i:i+1])
+                loss_i = loss_fn(out_i, y[i:i+1])
+                g_i = torch.autograd.grad(loss_i, params,
+                                          retain_graph=False)
+                g_i_flat = torch.cat([g.reshape(-1) for g in g_i]).detach()
+                G.append(g_i_flat)
+            G = torch.stack(G)                                   # (N, D_total)
+            norms_sq = (G ** 2).sum(dim=1, keepdim=True) + eps  # (N, 1)
+            ief_diag = (G ** 2 / norms_sq).mean(dim=0) + eps    # (D_total,)
+            update_flat = -lr * grad_flat.detach() / ief_diag
+
         elif optimizer_name == 'NGD':
-            # Diagonal Fisher for neural network:
-            # For MSE loss, Fisher diagonal ≈ diag of J^T J / N
-            # where J is the Jacobian. Approximate via per-sample gradients.
             damping = 1e-2
             fisher_diag = torch.zeros(D_total)
             for i in range(N):
@@ -109,29 +140,34 @@ def train_and_measure(optimizer_name, n_steps=500, lr=0.01):
 
     return gammas, losses
 
+
 print("=" * 50)
 print("Experiment 4: Small Neural Network")
 print("=" * 50)
 
+
 results = {}
-for opt in ['SGD', 'Adam', 'EF', 'NGD']:
-    lr = 0.05 if opt == 'NGD' else 0.001 if opt == 'SGD' else 0.01
+for opt in ['SGD', 'Adam', 'EF', 'iEF', 'NGD']:
+    if opt == 'NGD':
+        lr = 0.05
+    elif opt == 'SGD':
+        lr = 0.001
+    else:
+        lr = 0.01
     print(f"\nRunning {opt}...")
     gammas, losses = train_and_measure(opt, lr=lr)
     results[opt] = {'gammas': gammas, 'losses': losses}
+
 
 os.makedirs('../results', exist_ok=True)
 os.makedirs('../figures', exist_ok=True)
 np.save('../results/exp4_results.npy', results)
 
-ngd_losses = results['NGD']['losses']
-ngd_converge_step = next(
-    (i+1 for i, l in enumerate(ngd_losses) if l < 0.5), None
-)
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-colors = {'SGD': 'blue', 'Adam': 'red', 'EF': 'orange', 'NGD': 'green'}
+colors = {'SGD': 'blue', 'Adam': 'red', 'EF': 'orange', 'iEF': 'purple', 'NGD': 'green'}
 steps = range(1, 501)
+
 
 for opt, data in results.items():
     if opt == 'NGD':
@@ -142,13 +178,6 @@ for opt, data in results.items():
         s_plot, g_plot = zip(*valid)
         ax1.plot(s_plot, g_plot, label=opt, color=colors[opt], alpha=0.8)
 
-if ngd_converge_step:
-    ax1.axvline(x=ngd_converge_step, color='green', linestyle='--',
-                alpha=0.7, linewidth=1.5,
-                label=f'NGD converged (step {ngd_converge_step})')
-else:
-    ax1.plot(steps, results['NGD']['gammas'],
-             label='NGD', color='green', alpha=0.8)
 
 ax1.set_xlabel('Training Step')
 ax1.set_ylabel('γ(Δθ)')
@@ -157,8 +186,10 @@ ax1.set_title('γ(Δθ): Step Alignment with Natural Gradient\n'
 ax1.legend()
 ax1.set_yscale('log')
 
+
 for opt, data in results.items():
     ax2.plot(steps, data['losses'], label=opt, color=colors[opt], alpha=0.8)
+
 
 ax2.set_xlabel('Training Step')
 ax2.set_ylabel('MSE Loss')
@@ -167,7 +198,8 @@ ax2.set_title('Training Loss\n'
 ax2.legend()
 ax2.set_yscale('log')
 
+
 plt.tight_layout()
-plt.savefig('../figures/exp4_neural_network.png', dpi=150, bbox_inches='tight')
+plt.savefig('../figures/exp4_neural_network.pdf', bbox_inches='tight')
 plt.show()
 print("Figure saved.")
