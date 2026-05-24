@@ -116,8 +116,6 @@ results = {}
 for opt in ['SGD', 'Adam', 'EF', 'iEF', 'NGD']:
     if opt == 'NGD':
         lr = 0.1
-    elif opt == 'iEF':
-        lr = 0.01
     else:
         lr = 0.01
     print(f"\nRunning {opt}...")
