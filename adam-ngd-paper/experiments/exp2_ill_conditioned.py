@@ -4,6 +4,25 @@ import numpy as np
 import matplotlib.pyplot as plt
 import sys
 import os
+import matplotlib as mpl
+mpl.rcParams.update({
+    "font.family": "serif",
+    "font.size": 11,
+    "axes.titlesize": 12,
+    "axes.labelsize": 12,
+    "xtick.labelsize": 10,
+    "ytick.labelsize": 10,
+    "legend.fontsize": 10,
+    "lines.linewidth": 2.2,
+    "axes.spines.top": True,
+    "axes.spines.right": True,
+    "axes.linewidth": 0.8,
+    "grid.alpha": 0.2,
+    "grid.linewidth": 0.6,
+    "savefig.bbox": "tight",
+    "pdf.fonttype": 42,
+    "ps.fonttype": 42,
+})
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from gamma_indicator import compute_gamma, compute_fisher_vector_product
 
@@ -169,55 +188,112 @@ print("\nResults saved.")
 
 
 # ── Plot ───────────────────────────────────────────────────
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-
+fig, (ax1, ax2) = plt.subplots(
+    1, 2,
+    figsize=(12.8, 4.8),
+    gridspec_kw={'wspace': 0.22}
+)
 
 colors = {
-    'SGD': 'blue',
-    'Adam': 'red',
-    'EF': 'orange',
-    'iEF': 'purple',
-    'NGD': 'green'
+    'SGD':  '#4C78A8',
+    'Adam': '#E45756',
+    'EF':   '#F2B134',
+    'iEF':  '#54A24B',
+    'NGD':  '#7A7A7A',
 }
 
+steps = np.arange(1, 2001)
 
-steps = range(1, 2001)
+# Gamma panel
+for opt in ['SGD', 'Adam', 'EF', 'iEF']:
+    gammas = np.array(results[opt]['gammas'], dtype=float)
+    valid = np.isfinite(gammas)
 
+    if opt == 'Adam':
+        lw, alpha, z = 2.6, 0.95, 4
+    elif opt == 'iEF':
+        lw, alpha, z = 2.2, 0.92, 3
+    elif opt == 'EF':
+        lw, alpha, z = 1.0, 0.25, 1
+    else:
+        lw, alpha, z = 2.0, 0.88, 2
 
-# γ plot — exclude NGD (reference method)
-for opt, data in results.items():
-    if opt == 'NGD':
-        continue
-    gammas = data['gammas']
-    valid = [(s, g) for s, g in zip(steps, gammas) if not np.isnan(g)]
-    if valid:
-        s_plot, g_plot = zip(*valid)
-        ax1.plot(s_plot, g_plot, label=opt, color=colors[opt], alpha=0.8)
+    ax1.plot(
+        steps[valid],
+        gammas[valid],
+        label=opt,
+        color=colors[opt],
+        lw=lw,
+        alpha=alpha,
+        zorder=z
+    )
 
-
-ax1.set_xlabel('Training Step')
-ax1.set_ylabel('γ(Δθ)')
-ax1.set_title('Approximation Quality to NGD\n'
-              'Ill-Conditioned Linear Regression')
-ax1.legend()
+ax1.set_xlabel('Training step')
+ax1.set_ylabel(r'$\gamma(\Delta \theta)$')
 ax1.set_yscale('log')
+ax1.set_ylim(5e-2, 1e3)
+ax1.set_title('Approximation quality to NGD', pad=12, fontsize=11.5, fontweight='semibold')
+ax1.grid(True, which='major', alpha=0.16)
+ax1.grid(False, which='minor')
+ax1.tick_params(direction='out')
 
+ax1.annotate(
+    'iEF becomes extremely small',
+    xy=(430, 0.08),
+    xytext=(930, 0.13),
+    textcoords='data',
+    fontsize=8.0,
+    color=colors['iEF'],
+    arrowprops=dict(arrowstyle='->', lw=0.8, color=colors['iEF'])
+)
 
-# Loss plot
-for opt, data in results.items():
-    ax2.plot(steps, data['losses'],
-             label=opt, color=colors[opt], alpha=0.8)
+# Loss panel
+for opt in ['SGD', 'Adam', 'EF', 'iEF', 'NGD']:
+    losses = np.array(results[opt]['losses'], dtype=float)
 
+    if opt == 'Adam':
+        ax2.plot(steps, losses, label=opt, color=colors[opt], lw=2.6, alpha=0.95, zorder=4)
+    elif opt == 'NGD':
+        ax2.plot(steps, losses, label=opt, color=colors[opt], lw=2.4, alpha=0.95, zorder=5)
+    elif opt == 'iEF':
+        ax2.plot(steps, losses, label=opt, color=colors[opt], lw=2.2, alpha=0.95, zorder=6)
+    elif opt == 'EF':
+        ax2.plot(steps, losses, label=opt, color=colors[opt], lw=1.4, alpha=0.55, zorder=1)
+    else:
+        ax2.plot(steps, losses, label=opt, color=colors[opt], lw=2.0, alpha=0.88, zorder=2)
 
-ax2.set_xlabel('Training Step')
-ax2.set_ylabel('MSE Loss')
-ax2.set_title('Training Loss\n'
-              'Ill-Conditioned Linear Regression')
-ax2.legend()
+ax2.set_xlabel('Training step')
+ax2.set_ylabel('MSE loss')
 ax2.set_yscale('log')
+ax2.set_ylim(7e-3, 2e3)
+ax2.set_title('Training loss', pad=12, fontsize=11.5, fontweight='semibold')
+ax2.grid(True, which='major', alpha=0.16)
+ax2.grid(False, which='minor')
+ax2.tick_params(direction='out')
 
+handles, labels = ax2.get_legend_handles_labels()
+fig.legend(
+    handles,
+    labels,
+    loc='upper center',
+    ncol=5,
+    frameon=False,
+    bbox_to_anchor=(0.5, 0.985),
+    handlelength=2.2,
+    columnspacing=1.5
+)
 
-plt.tight_layout()
-plt.savefig('../figures/exp2_ill_conditioned.pdf', bbox_inches='tight')
+fig.suptitle('Ill-conditioned linear regression', y=1.03, fontsize=12, fontweight='semibold')
+
+fig.subplots_adjust(
+    top=0.80,
+    bottom=0.14,
+    left=0.08,
+    right=0.98,
+    wspace=0.22
+)
+
+plt.savefig('../figures/exp2_ill_conditioned.pdf')
+plt.savefig('../figures/exp2_ill_conditioned.png', dpi=300)
 plt.show()
 print("Figure saved.")
