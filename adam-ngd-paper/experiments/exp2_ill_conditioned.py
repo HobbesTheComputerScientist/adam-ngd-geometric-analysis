@@ -237,16 +237,6 @@ ax1.grid(True, which='major', alpha=0.16)
 ax1.grid(False, which='minor')
 ax1.tick_params(direction='out')
 
-ax1.annotate(
-    'iEF becomes extremely small',
-    xy=(430, 0.08),
-    xytext=(930, 0.13),
-    textcoords='data',
-    fontsize=8.0,
-    color=colors['iEF'],
-    arrowprops=dict(arrowstyle='->', lw=0.8, color=colors['iEF'])
-)
-
 # Loss panel
 for opt in ['SGD', 'Adam', 'EF', 'iEF', 'NGD']:
     losses = np.array(results[opt]['losses'], dtype=float)

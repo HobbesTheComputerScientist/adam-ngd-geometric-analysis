@@ -260,14 +260,6 @@ ax2.grid(False, which='minor')
 ax2.tick_params(direction='out')
 ax2.set_title('Training loss', pad=12, fontsize=11.5, fontweight='semibold')
 
-ax2.text(
-    0.58, 0.16,
-    'iEF closely tracks NGD on loss',
-    transform=ax2.transAxes,
-    fontsize=9.0,
-    color=colors['iEF']
-)
-
 # Shared legend above both panels
 handles, labels = ax2.get_legend_handles_labels()
 fig.legend(
